@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EduPath AI - 맞춤형 교과·독서 AI 추천 시스템</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700&display=swap');
+        body { font-family: 'Pretendard', sans-serif; background-color: #f8fafc; }
+        .glass-morphism { background: rgba(255,255,255,0.9); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); }
+        .gradient-text { background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .loading-shimmer { background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        .rag-badge { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        .fade-in { animation: fadeIn 0.5s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .kw-badge { display: inline-flex; align-items: center; gap: 6px; }
+        .modal-overlay { display: none; }
+        .modal-overlay.open { display: flex; }
+        details > summary { cursor: pointer; list-style: none; }
+        details > summary::-webkit-details-marker { display: none; }
+        details[open] .chevron { transform: rotate(180deg); }
+        .chevron { transition: transform 0.2s; }
+        @media print {
+            nav, footer, form, #placeholderState, #loadingState,
+            #service-overview, #data-sources, #tech-stack,
+            .modal-overlay, .no-print { display: none !important; }
+            main { padding: 0 !important; max-width: 100% !important; }
+            .fade-in { animation: none !important; opacity: 1 !important; transform: none !important; }
+            .bg-slate-900 { background: #f1f5f9 !important; color: #1e293b !important; }
+            .bg-gradient-to-br { background: #eff6ff !important; color: #1e293b !important; }
+            .text-white { color: #1e293b !important; }
+            .text-blue-100, .text-yellow-100, .text-blue-200, .text-slate-400 { color: #334155 !important; }
+            .gradient-text { -webkit-text-fill-color: #2563eb; }
+            .shadow-xl, .shadow-lg, .shadow-sm { box-shadow: none !important; }
+            .glass-morphism { background: white !important; }
+        }
+    </style>
+</head>
+<body class="min-h-screen text-slate-800">
+
+<!-- ── 전체 과목 모달 ── -->
+<div id="allSubjectsModal" class="modal-overlay fixed inset-0 bg-black/60 z-50 items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl">
+        <div class="flex justify-between items-center p-6 border-b border-slate-200 flex-shrink-0">
+            <h3 class="text-xl font-bold flex items-center gap-2">
+                <button id="subjectDetailBack" onclick="showSubjectGrid()"
+                    class="hidden w-8 h-8 rounded-full bg-slate-100 hover:bg-blue-100 flex items-center justify-center transition-colors mr-1">
+                    <i class="fas fa-arrow-left text-slate-600 text-sm"></i>
+                </button>
+                <i id="subjectModalIcon" class="fas fa-list text-blue-600"></i>
+                <span id="subjectModalTitle">나이스 API 전체 개설과목</span>
+            </h3>
+            <button onclick="closeModal('allSubjectsModal')" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors">
+                <i class="fas fa-times text-slate-600 text-sm"></i>
+            </button>
+        </div>
+        <div class="overflow-y-auto p-6" id="allSubjectsModalContent">
+            <p class="text-slate-400 text-sm">데이터 없음</p>
+        </div>
+        <div class="hidden overflow-y-auto p-6" id="subjectDetailPanel"></div>
+    </div>
+</div>
+
+<nav class="sticky top-0 z-40 glass-morphism border-b border-slate-200 px-4 py-3">
+    <div class="max-w-7xl mx-auto flex justify-between items-center">
+        <div class="flex items-center gap-2">
+            <div class="bg-blue-600 p-2 rounded-lg text-white">
+                <i class="fas fa-graduation-cap text-xl"></i>
+            </div>
+            <span class="text-xl font-bold tracking-tight">EduPath <span class="text-blue-600">AI</span></span>
+        </div>
+        <div class="hidden md:flex gap-6 text-sm font-medium text-slate-600">
+            <a href="#main-interactive-section" class="hover:text-blue-600 font-bold text-blue-700">AI 로드맵</a>
+            <a href="#service-overview" class="hover:text-blue-600">서비스 개요</a>
+            <a href="#data-sources" class="hover:text-blue-600">데이터 출처</a>
+            <a href="#tech-stack" class="hover:text-blue-600">기술 스택</a>
+        </div>
+        <div class="flex items-center gap-3">
+            <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-bold rag-badge">
+                <i class="fas fa-check-circle mr-1"></i> API Active
+            </span>
+        </div>
+    </div>
+</nav>
+
+<main class="max-w-7xl mx-auto px-4 py-8 md:py-12">
+
+    <div class="text-center mb-12">
+        <h1 class="text-3xl md:text-5xl font-bold mb-4">
+            데이터로 설계하는 <span class="gradient-text">나만의 진로 로드맵</span>
+        </h1>
+        <p class="text-slate-500 text-lg max-w-2xl mx-auto">
+            공공 API 데이터와 로컬 sLLM을 결합하여<br class="hidden md:block">
+            가장 신뢰도 높은 교과·독서·생기부 키워드를 추천합니다.
+        </p>
+    </div>
+
+    <div id="main-interactive-section" class="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-12">
+
+        <!-- 좌측: 입력 폼 -->
+        <div class="lg:col-span-4 space-y-6">
+            <form id="roadmapForm" class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
+                    <i class="fas fa-user-edit text-blue-500"></i> 진로 페르소나 설정
+                </h3>
+                <div class="space-y-4">
+                    <div>
+                        <label for="interestInput" class="block text-sm font-medium text-slate-700 mb-1">희망 전공/관심 분야</label>
+                        <input id="interestInput" type="text" required placeholder="예: 에너지 공학자, 인공지능 개발자"
+                               class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">현재 학년</label>
+                        <select id="gradeSelect" class="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none">
+                            <option>고등학교 1학년</option>
+                            <option selected>고등학교 2학년</option>
+                            <option>고등학교 3학년</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">재학 중인 학교명 (선택)</label>
+                        <input id="schoolInput" type="text" placeholder="예: 서울과학고등학교"
+                               class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all">
+                        <p class="text-xs text-slate-400 mt-1">입력 시 해당 학교 실제 개설과목 기반으로 추천</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">핵심 키워드 (선택)</label>
+                        <input id="keywordsInput" type="text" placeholder="예: 환경 데이터, 최적화, 지속가능성"
+                               class="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none">
+                    </div>
+                    <button type="submit" id="generateBtn" class="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-blue-700 transform active:scale-[0.98] transition-all shadow-lg shadow-blue-200">
+                        AI 로드맵 생성하기
+                    </button>
+                </div>
+            </form>
+
+            <div class="bg-slate-900 text-white p-6 rounded-2xl shadow-xl">
+                <h3 class="text-sm font-bold mb-4 text-slate-400 uppercase tracking-widest">API Engine Status</h3>
+                <div class="space-y-3" id="apiStatusList">
+                    <div class="flex justify-between items-center text-sm">
+                        <span class="flex items-center gap-2"><i class="fas fa-database text-blue-400"></i> 나이스 API</span>
+                        <span id="statusNeis" class="text-slate-400">대기</span>
+                    </div>
+                    <div class="flex justify-between items-center text-sm">
+                        <span class="flex items-center gap-2"><i class="fas fa-university text-purple-400"></i> 대학알리미 API</span>
+                        <span id="statusAcademy" class="text-slate-400">대기</span>
+                    </div>
+                    <div class="pt-4 mt-4 border-t border-slate-700">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs text-slate-400 font-medium">sLLM Reasoning Engine</span>
+                            <span class="text-xs text-blue-400">Gemma 4 / llama.cpp</span>
+                        </div>
+                        <div class="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                            <div id="reasoningBar" class="bg-blue-500 h-full w-0 transition-all duration-1000"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 우측: 결과 패널 -->
+        <div class="lg:col-span-8">
+
+            <!-- placeholder -->
+            <div id="placeholderState" class="h-full flex flex-col items-center justify-center bg-white border-2 border-dashed border-slate-200 rounded-3xl p-12 text-center">
+                <div class="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4 text-slate-300">
+                    <i class="fas fa-magic text-4xl"></i>
+                </div>
+                <h3 class="text-xl font-bold text-slate-400">관심 분야를 입력하고 'Enter'를 누르세요</h3>
+                <p class="text-slate-400 mt-2">AI가 실시간 공공데이터를 분석하여 맞춤형 로드맵을 생성합니다.</p>
+            </div>
+
+            <!-- loading -->
+            <div id="loadingState" class="hidden space-y-6">
+                <div class="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                    <div class="flex items-center gap-4 mb-8">
+                        <div class="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 animate-spin">
+                            <i class="fas fa-spinner"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-xl" id="loadingText">공공 API 데이터 검색 중...</h3>
+                            <p class="text-sm text-slate-500">실시간 공공데이터 API로부터 최신 정보를 가져오고 있습니다.</p>
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="h-8 w-3/4 loading-shimmer rounded-lg"></div>
+                        <div class="h-32 w-full loading-shimmer rounded-xl"></div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="h-24 loading-shimmer rounded-xl"></div>
+                            <div class="h-24 loading-shimmer rounded-xl"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- result -->
+            <div id="resultState" class="hidden space-y-6">
+
+                <!-- Section 1: 추천 교과 & 연계도서 -->
+                <div class="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-200 fade-in">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-xl font-bold flex items-center gap-2">
+                            <i class="fas fa-chalkboard-teacher text-blue-600"></i> 1. 추천 선택 교과 &amp; 연계도서
+                        </h3>
+                        <div class="flex items-center gap-2">
+                            <button onclick="openModal('allSubjectsModal')" class="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full border border-blue-100 hover:bg-blue-100 transition-colors">
+                                <i class="fas fa-list mr-1"></i> 전체 과목 보기
+                            </button>
+                            <span class="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">sLLM 분석</span>
+                        </div>
+                    </div>
+                    <p class="text-xs text-slate-400 mb-5" id="schoolBadge"></p>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="subjectResults"></div>
+                </div>
+
+                <!-- Section 2: 대학·학과 정보 -->
+                <div class="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-200 fade-in" style="animation-delay:0.15s;">
+                    <h3 class="text-xl font-bold flex items-center gap-2 mb-5">
+                        <i class="fas fa-university text-purple-600"></i> 2. 관련 대학·학과 심층 분석
+                    </h3>
+                    <div id="universityResults"></div>
+                </div>
+
+                <!-- Section 3: 생기부 키워드 -->
+                <div class="bg-slate-900 p-6 md:p-8 rounded-3xl shadow-xl text-white fade-in" style="animation-delay:0.3s;">
+                    <h3 class="text-xl font-bold flex items-center gap-2 mb-2">
+                        <i class="fas fa-tags text-purple-400"></i> 3. 생기부 세특 키워드 제안
+                    </h3>
+                    <p class="text-xs text-slate-400 mb-5">카테고리별 분류 · 클릭하면 복사됩니다</p>
+                    <!-- 카테고리 필터 -->
+                    <div class="flex flex-wrap gap-2 mb-4" id="kwCategoryFilter"></div>
+                    <div class="flex flex-wrap gap-3" id="keywordList">
+                        <span class="px-4 py-2 bg-slate-800 rounded-full border border-slate-700 text-sm font-medium">#에너지_데이터_분석</span>
+                        <span class="px-4 py-2 bg-slate-800 rounded-full border border-slate-700 text-sm font-medium">#미적분적_사고</span>
+                        <span class="px-4 py-2 bg-slate-800 rounded-full border border-slate-700 text-sm font-medium">#지속가능한_공학솔루션</span>
+                        <span class="px-4 py-2 bg-slate-800 rounded-full border border-slate-700 text-sm font-medium">#공공데이터_활용_탐구</span>
+                    </div>
+                    <div class="mt-8 flex justify-end gap-3 no-print">
+                        <button type="button" onclick="downloadPdf()" class="px-6 py-2 rounded-xl border border-slate-700 text-sm font-bold hover:bg-slate-800 transition-all">
+                            <i class="fas fa-file-pdf mr-2"></i> PDF 다운로드
+                        </button>
+                        <button type="button" onclick="saveToXml()" class="px-6 py-2 rounded-xl bg-purple-600 text-sm font-bold hover:bg-purple-700 transition-all">
+                            <i class="fas fa-file-code mr-2"></i> XML 저장
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Section 4: 종합 학습 로드맵 -->
+                <div class="bg-gradient-to-br from-blue-900 to-indigo-900 p-6 md:p-8 rounded-3xl shadow-xl text-white fade-in" style="animation-delay:0.45s;">
+                    <h3 class="text-xl font-bold flex items-center gap-2 mb-6">
+                        <i class="fas fa-route text-blue-300"></i> 4. 종합 학습 로드맵
+                    </h3>
+                    <div id="studyGuideContent" class="space-y-5">
+                        <p class="text-slate-400 text-sm">로드맵 생성 중...</p>
+                    </div>
+                </div>
+
+            </div><!-- /resultState -->
+        </div>
+    </div>
+
+    <!-- 서비스 개요 -->
+    <section id="service-overview" class="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-200 mb-12">
+        <h2 class="text-2xl md:text-3xl font-bold mb-6 flex items-center gap-3">
+            <i class="fas fa-lightbulb text-blue-500"></i> 서비스 개요
+        </h2>
+        <p class="text-lg text-slate-700 leading-relaxed mb-4">
+            본 서비스는 고교학점제 시대, 학생들이 자신의 진로에 대해 초기 기획 단계부터 쉽고 빠르게 접근할 수 있도록 돕습니다.
+            AI의 도움으로 구체적인 교과 선택·독서 활동·생기부 키워드·대학 진학 정보 로드맵을 통합 제공합니다.
+        </p>
+        <p class="text-lg text-slate-700 leading-relaxed">
+            데이터 기반의 맞춤형 추천을 통해 학생들은 자신에게 맞는 진로를 더 쉽게 찾아나가고,
+            교사들은 AI 보조 교사를 활용하여 진로 상담의 질을 향상하고 업무 부담을 경감할 수 있습니다.
+        </p>
+    </section>
+
+    <!-- 데이터 출처 -->
+    <section id="data-sources" class="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-200 mb-12">
+        <h2 class="text-2xl md:text-3xl font-bold mb-6 flex items-center gap-3">
+            <i class="fas fa-database text-emerald-600"></i> 데이터 출처
+        </h2>
+        <ul class="space-y-4 text-slate-700 text-lg">
+            <li class="flex items-start gap-3">
+                <i class="fas fa-check-circle text-emerald-500 mt-1"></i>
+                <div>
+                    <strong class="text-slate-900">과목 정보 (나이스/학교알리미 API):</strong>
+                    <span class="block text-base">전국 고등학교의 표준 교육과정 및 선택 과목 상세 설명 데이터를 연동하여 제공합니다.</span>
+                </div>
+            </li>
+            <li class="flex items-start gap-3">
+                <i class="fas fa-check-circle text-emerald-500 mt-1"></i>
+                <div>
+                    <strong class="text-slate-900">도서 정보 (국립중앙도서관/API):</strong>
+                    <span class="block text-base">추천된 도서의 저자, 줄거리, 소장 여부 등을 실시간으로 검색하여 상세 정보 및 링크를 제공합니다.</span>
+                </div>
+            </li>
+            <li class="flex items-start gap-3">
+                <i class="fas fa-check-circle text-emerald-500 mt-1"></i>
+                <div>
+                    <strong class="text-slate-900">대학/학과 정보 (대학알리미 API):</strong>
+                    <span class="block text-base">각 대학 및 학과별 핵심 역량, 권장 이수 과목 기준 등 진로 설계에 필요한 데이터를 활용합니다.</span>
+                </div>
+            </li>
+        </ul>
+    </section>
+
+    <!-- 기술 스택 -->
+    <section id="tech-stack" class="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-200 mb-12">
+        <h2 class="text-2xl md:text-3xl font-bold mb-6 flex items-center gap-3">
+            <i class="fas fa-cogs text-purple-600"></i> 기술 스택
+        </h2>
+        <div class="space-y-6 text-slate-700 text-lg">
+            <div>
+                <strong class="text-slate-900 block mb-2">핵심 AI 모델: Gemma 4 (GGUF 양자화)</strong>
+                <p class="text-base leading-relaxed">
+                    Google의 Gemma 4 모델을 GGUF Q5_K_P로 양자화하여 로컬에서 직접 실행합니다.
+                    한국 교육과정 추론에 특화된 시스템 프롬프트와 ChatML 포맷으로 구조화된 JSON 출력을 유도합니다.
+                </p>
+            </div>
+            <div>
+                <strong class="text-slate-900 block mb-2">로컬 추론: llama-cpp-python + RadixAttention 유사 구현체</strong>
+                <p class="text-base leading-relaxed">
+                    GGUF 모델을 llama-cpp-python으로 직접 실행하며, vLLM의 RadixAttention과 동일한 원리인
+                    Radix Tree 기반 KV 캐시 공유로 반복 프리픽스의 토큰 재계산을 생략합니다.
+                    추론 패스(과목·대학·키워드)별 독립 트리 3개를 운용하여 컨텍스트 오염을 방지하고,
+                    asyncio Lock 큐로 동시 요청을 직렬화하여 단일 GPU 환경에서도 안정적으로 서비스합니다.
+                </p>
+            </div>
+            <div>
+                <strong class="text-slate-900 block mb-2">정확성 확보: 공공 API 컨텍스트 주입</strong>
+                <p class="text-base leading-relaxed">
+                    NEIS(나이스)에서 실제 시간표·개설 과목을, 대학알리미에서 학과 정보를, 국립중앙도서관 API에서 실존 도서를 실시간으로 조회하여
+                    LLM 프롬프트에 직접 주입합니다. 모델이 지어내는 허위 정보 대신 검증된 공공 데이터만을 근거로 답변을 생성하여 환각을 최소화합니다.
+                </p>
+            </div>
+        </div>
+    </section>
+</main>
+
+<footer class="max-w-7xl mx-auto px-4 py-12 border-t border-slate-200 mt-12">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div class="col-span-1 md:col-span-2">
+            <div class="flex items-center gap-2 mb-4">
+                <div class="bg-slate-800 p-1.5 rounded text-white">
+                    <i class="fas fa-graduation-cap"></i>
+                </div>
+                <span class="font-bold text-lg">EduPath AI</span>
+            </div>
+            <p class="text-slate-500 text-sm max-w-sm">
+                고교학점제 시대, 학생들의 자기주도적 진로 설계를 돕기 위해 공공데이터와 최신 AI 기술을 결합한 혁신 모델입니다.
+            </p>
+        </div>
+        <div>
+            <h4 class="font-bold mb-4">활용 데이터</h4>
+            <ul class="text-sm text-slate-500 space-y-2">
+                <li>나이스/학교알리미(과목 정보)</li>
+                <li>국립중앙도서관(도서 정보)</li>
+                <li>대학알리미(학과 정보)</li>
+            </ul>
+        </div>
+        <div>
+            <h4 class="font-bold mb-4">기술 스택</h4>
+            <ul class="text-sm text-slate-500 space-y-2">
+                <li>Gemma 4 (GGUF Q5_K_P)</li>
+                <li>llama-cpp-python + RadixAttention 유사 구현체</li>
+                <li>공공 API 컨텍스트 주입</li>
+                <li>Tailwind CSS / FastAPI</li>
+            </ul>
+        </div>
+    </div>
+    <div class="mt-12 pt-8 border-t border-slate-100 text-center text-xs text-slate-400">
+        © 2026 EduPath AI. All rights reserved. 교육 공공 데이터 AI 활용 대회 출품작.
+    </div>
+</footer>
+
+<script>
+// ─── 모달 유틸 ───────────────────────────────────────────────
+function openModal(id) {
+    document.getElementById(id).classList.add('open');
+    document.body.style.overflow = 'hidden';
+}
+function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+    document.body.style.overflow = '';
+    if (id === 'allSubjectsModal') showSubjectGrid();
+}
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.modal-overlay.open').forEach(m => {
+            m.classList.remove('open');
+            document.body.style.overflow = '';
+        });
+        showSubjectGrid();
+    }
+});
+
+// ─── 키워드 복사 ─────────────────────────────────────────────
+function copyKeyword(tag) {
+    navigator.clipboard?.writeText(tag).then(() => {
+        const el = event.currentTarget;
+        const orig = el.innerHTML;
+        el.innerHTML = `<i class="fas fa-check mr-1 text-green-400"></i>${tag}`;
+        setTimeout(() => { el.innerHTML = orig; }, 1200);
+    }).catch(() => {});
+}
+
+// ─── 저장 ────────────────────────────────────────────────────
+window.saveUserRecord = function(type, data) {
+    console.log(`[데이터 저장] 타입: ${type}`, data);
+};
+
+function escXml(s) {
+    return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
+}
+
+function saveToXml() {
+    const interest   = document.getElementById('interestInput').value;
+    const schoolName = document.getElementById('schoolInput')?.value || '';
+    const keywordEls = document.querySelectorAll('#keywordList span[data-tag]');
+    const keywords   = Array.from(keywordEls).map(el => el.dataset.tag);
+
+    const subjectCards = document.querySelectorAll('#subjectResults > div');
+    let subjectsXml = '';
+    subjectCards.forEach(card => {
+        const name   = card.querySelector('.subject-name')?.innerText?.trim() || '';
+        const reason = card.querySelector('.subject-reason')?.innerText?.trim() || '';
+        const bookDivs = card.querySelectorAll('.book-item');
+        let booksXml = '';
+        bookDivs.forEach(bdiv => {
+            const title = bdiv.querySelector('.book-title')?.innerText?.trim() || '';
+            const guide = bdiv.querySelector('.book-guide')?.innerText?.trim() || '';
+            if (title) booksXml += `      <Book>\n        <Title>${escXml(title)}</Title>\n        <Guide>${escXml(guide)}</Guide>\n      </Book>\n`;
+        });
+        if (name) subjectsXml += `    <Subject>\n      <Name>${escXml(name)}</Name>\n      <Reason>${escXml(reason)}</Reason>\n${booksXml}    </Subject>\n`;
+    });
+
+    let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<EduPathRecommendation>\n`;
+    xml += `  <Timestamp>${new Date().toISOString()}</Timestamp>\n`;
+    xml += `  <Interest>${escXml(interest)}</Interest>\n`;
+    if (schoolName) xml += `  <School>${escXml(schoolName)}</School>\n`;
+    xml += `  <Subjects>\n${subjectsXml}  </Subjects>\n`;
+    xml += `  <Keywords>\n`;
+    keywords.forEach(k => { xml += `    <Keyword>${escXml(k)}</Keyword>\n`; });
+    xml += `  </Keywords>\n</EduPathRecommendation>`;
+
+    try {
+        const blob = new Blob([xml], { type: 'application/xml;charset=utf-8' });
+        const url  = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href     = url;
+        link.download = `EduPath_${interest.replace(/\s+/g,'_')}_${new Date().toISOString().slice(0,10)}.xml`;
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => { URL.revokeObjectURL(url); document.body.removeChild(link); }, 300);
+    } catch(e) {
+        alert(`XML 저장 실패: ${e.message}`);
+    }
+}
+
+function downloadPdf() {
+    window.print();
+}
+
+// ─── API 상태 ─────────────────────────────────────────────────
+function renderApiStatus(errors) {
+    const neisErr    = errors?.neis    || '';
+    const academyErr = errors?.academy || '';
+    document.getElementById('statusNeis').innerHTML = neisErr
+        ? `<span class="text-red-400 text-xs" title="${neisErr}">오류 ⚠</span>`
+        : `<span class="text-green-400">Connected</span>`;
+    document.getElementById('statusAcademy').innerHTML = academyErr
+        ? `<span class="text-red-400 text-xs" title="${academyErr}">오류 ⚠</span>`
+        : `<span class="text-green-400">Connected</span>`;
+}
+
+// ─── 렌더링 ──────────────────────────────────────────────────
+
+function renderSubjects(subjects) {
+    const el = document.getElementById('subjectResults');
+    if (!subjects || subjects.length === 0) {
+        el.innerHTML = `<p class="text-slate-400 col-span-2">추천 과목을 생성하지 못했습니다.</p>`;
+        return;
+    }
+    el.innerHTML = subjects.map((s, idx) => {
+        const booksHtml = (s.books || []).map((b, i) => `
+            <div class="book-item flex gap-3 items-start ${i > 0 ? 'mt-2 pt-2 border-t border-emerald-100' : ''}">
+                <div class="w-6 h-6 rounded bg-emerald-100 text-emerald-600 flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5">${i+1}</div>
+                <div class="min-w-0">
+                    ${b.link
+                        ? `<a href="${b.link}" target="_blank" rel="noopener" class="book-title text-xs font-bold text-emerald-700 hover:underline break-words">${b.title || ''} <i class="fas fa-external-link-alt text-[10px] opacity-60"></i></a>`
+                        : `<p class="book-title text-xs font-bold text-slate-700 break-words">${b.title || ''}</p>`}
+                    <p class="text-xs text-slate-400 mt-0.5">
+                        ${b.author || ''}${b.pub_year ? ` <span class="text-slate-300">·</span> ${b.pub_year}` : ''}
+                        ${b.isbn ? `<span class="ml-1 text-[10px] text-slate-300">ISBN ${b.isbn}</span>` : ''}
+                    </p>
+                    <p class="book-guide text-xs text-slate-500 mt-0.5 leading-relaxed">${b.guide || ''}</p>
+                </div>
+            </div>`).join('');
+        return `
+        <div class="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col gap-3">
+            <div>
+                <div class="flex justify-between items-start mb-1">
+                    <span class="subject-name font-bold text-base text-slate-800">[${s.name || ''}]</span>
+                    <span class="text-xs bg-white px-2 py-1 rounded border border-slate-200 text-slate-500 ml-2 flex-shrink-0">${s.category || ''}</span>
+                </div>
+                <p class="subject-reason text-sm text-slate-600 leading-relaxed">${s.reason || ''}</p>
+            </div>
+            ${booksHtml ? `
+            <div class="bg-emerald-50 rounded-xl p-3 border border-emerald-100">
+                <p class="text-xs font-bold text-emerald-700 mb-2"><i class="fas fa-book-open mr-1"></i>연계도서</p>
+                ${booksHtml}
+            </div>` : ''}
+        </div>`;
+    }).join('');
+}
+
+function renderUniversities(universities, academyErr) {
+    const el = document.getElementById('universityResults');
+    if (academyErr) {
+        el.innerHTML = `
+            <div class="flex items-center gap-3 p-4 bg-red-50 rounded-xl border border-red-100 text-sm">
+                <i class="fas fa-exclamation-triangle text-red-400 flex-shrink-0"></i>
+                <div>
+                    <p class="font-bold text-red-700">대학알리미 API 오류</p>
+                    <p class="text-red-500 text-xs mt-0.5">${academyErr}</p>
+                </div>
+            </div>`;
+        return;
+    }
+    if (!universities || universities.length === 0) {
+        el.innerHTML = `<p class="text-sm text-slate-400">대학 정보가 없습니다.</p>`;
+        return;
+    }
+    el.innerHTML = `<div class="grid grid-cols-1 gap-4">
+        ${universities.map(u => {
+            const admSubjects = (u.admission_subjects || []).map(s =>
+                `<span class="text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full">${s}</span>`
+            ).join('');
+            const careerPaths = (u.career_paths || []).map(c =>
+                `<li class="flex items-center gap-1"><i class="fas fa-arrow-right text-emerald-500 text-xs"></i><span>${c}</span></li>`
+            ).join('');
+            return `
+            <div class="p-5 bg-purple-50 rounded-2xl border border-purple-100">
+                <div class="flex justify-between items-start mb-3">
+                    <div>
+                        <span class="font-bold text-base text-slate-800">${u.name || ''}</span>
+                        <span class="ml-2 text-xs bg-white px-2 py-1 rounded border border-purple-200 text-purple-600">${u.department || ''}</span>
+                    </div>
+                    ${u.focus ? `<span class="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full border border-purple-200 flex-shrink-0 ml-2">${u.focus}</span>` : ''}
+                </div>
+                <p class="text-sm text-slate-600 leading-relaxed mb-3">${u.reason || ''}</p>
+                ${admSubjects ? `
+                <div class="mb-3">
+                    <p class="text-xs font-bold text-blue-700 mb-1.5"><i class="fas fa-book mr-1"></i>입학 권장 이수과목</p>
+                    <div class="flex flex-wrap gap-1.5">${admSubjects}</div>
+                </div>` : ''}
+                ${careerPaths ? `
+                <div>
+                    <p class="text-xs font-bold text-emerald-700 mb-1.5"><i class="fas fa-briefcase mr-1"></i>졸업 후 진로</p>
+                    <ul class="text-xs text-slate-600 space-y-0.5">${careerPaths}</ul>
+                </div>` : ''}
+            </div>`;
+        }).join('')}
+    </div>`;
+}
+
+const KW_CATEGORY_COLOR = {
+    '세특':   { bg: 'bg-blue-900',   border: 'border-blue-700',   text: 'text-blue-300',   badge: 'bg-blue-700' },
+    '자소서': { bg: 'bg-violet-900', border: 'border-violet-700', text: 'text-violet-300', badge: 'bg-violet-700' },
+    '동아리': { bg: 'bg-emerald-900',border: 'border-emerald-700',text: 'text-emerald-300',badge: 'bg-emerald-700' },
+    '독서':   { bg: 'bg-amber-900',  border: 'border-amber-700',  text: 'text-amber-300',  badge: 'bg-amber-700' },
+    '진로':   { bg: 'bg-rose-900',   border: 'border-rose-700',   text: 'text-rose-300',   badge: 'bg-rose-700' },
+};
+const KW_DEFAULT_COLOR = { bg: 'bg-slate-800', border: 'border-slate-700', text: 'text-slate-300', badge: 'bg-slate-600' };
+
+let _allKeywords = [];
+
+function renderKeywords(keywords) {
+    _allKeywords = keywords;
+    const filterEl = document.getElementById('kwCategoryFilter');
+    const listEl   = document.getElementById('keywordList');
+
+    if (!keywords || keywords.length === 0) {
+        filterEl.innerHTML = '';
+        listEl.innerHTML = `<span class="text-slate-500 text-sm"><i class="fas fa-exclamation-triangle mr-1"></i>LLM 키워드 생성 실패 — 서버 로그 확인</span>`;
+        return;
+    }
+
+    const categories = ['전체', ...new Set(keywords.map(k => k.category || '기타'))];
+    filterEl.innerHTML = categories.map(cat => `
+        <button onclick="filterKeywords('${cat}')" data-cat="${cat}"
+            class="kw-filter-btn text-xs px-3 py-1 rounded-full border transition-colors font-medium
+                   ${cat === '전체' ? 'bg-white text-slate-800 border-white' : 'bg-transparent text-slate-400 border-slate-600 hover:border-slate-400'}">
+            ${cat}
+        </button>`).join('');
+
+    renderKeywordList('전체');
+}
+
+function filterKeywords(cat) {
+    document.querySelectorAll('.kw-filter-btn').forEach(btn => {
+        const active = btn.dataset.cat === cat;
+        btn.className = `kw-filter-btn text-xs px-3 py-1 rounded-full border transition-colors font-medium ${
+            active ? 'bg-white text-slate-800 border-white' : 'bg-transparent text-slate-400 border-slate-600 hover:border-slate-400'
+        }`;
+    });
+    renderKeywordList(cat);
+}
+
+function renderKeywordList(cat) {
+    const listEl = document.getElementById('keywordList');
+    const filtered = cat === '전체' ? _allKeywords : _allKeywords.filter(k => k.category === cat);
+    listEl.innerHTML = filtered.map(k => {
+        const col = KW_CATEGORY_COLOR[k.category] || KW_DEFAULT_COLOR;
+        return `<span data-tag="${k.tag || ''}" onclick="copyKeyword('${(k.tag||'').replace(/'/g,"\\'")}', this)"
+            title="${k.context || ''}"
+            class="kw-badge px-4 py-2 ${col.bg} rounded-full border ${col.border} text-sm font-medium hover:border-white transition-colors cursor-pointer select-none">
+            <span class="text-[10px] ${col.badge} px-1.5 py-0.5 rounded-full text-white mr-1">${k.category || ''}</span>
+            <span class="${col.text}">${k.tag || ''}</span>
+        </span>`;
+    }).join('');
+}
+
+function copyKeyword(tag, el) {
+    navigator.clipboard?.writeText(tag).then(() => {
+        const orig = el.innerHTML;
+        el.innerHTML = `<span class="text-green-400 text-xs font-bold">✓ 복사됨</span>`;
+        setTimeout(() => { el.innerHTML = orig; }, 1000);
+    }).catch(() => {});
+}
+
+function renderStudyGuide(guide) {
+    const el = document.getElementById('studyGuideContent');
+    if (!guide || (!guide.roadmap && !guide.activities && !guide.tips)) {
+        el.innerHTML = `<p class="text-slate-400 text-sm">학습 로드맵 생성 실패 — 서버 로그를 확인하세요.</p>`;
+        return;
+    }
+
+    const activitiesHtml = (guide.activities || []).map((act, i) => `
+        <div class="flex items-start gap-3 p-3 bg-white/10 rounded-xl">
+            <div class="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5">${i+1}</div>
+            <p class="text-sm text-blue-100">${act}</p>
+        </div>`).join('');
+
+    el.innerHTML = `
+        ${guide.roadmap ? `
+        <div>
+            <p class="text-sm font-bold text-blue-300 mb-2 flex items-center gap-2">
+                <i class="fas fa-calendar-alt"></i> 학기별 이수 계획
+            </p>
+            <div class="bg-white/10 rounded-xl p-4">
+                <p class="text-sm text-blue-100 leading-relaxed whitespace-pre-line">${guide.roadmap}</p>
+            </div>
+        </div>` : ''}
+
+        ${activitiesHtml ? `
+        <div>
+            <p class="text-sm font-bold text-blue-300 mb-2 flex items-center gap-2">
+                <i class="fas fa-star"></i> 추천 비교과 활동
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">${activitiesHtml}</div>
+        </div>` : ''}
+
+        ${guide.tips ? `
+        <div>
+            <p class="text-sm font-bold text-blue-300 mb-2 flex items-center gap-2">
+                <i class="fas fa-lightbulb"></i> 입시 전략 핵심 조언
+            </p>
+            <div class="bg-yellow-500/20 border border-yellow-400/30 rounded-xl p-4">
+                <p class="text-sm text-yellow-100 leading-relaxed">${guide.tips}</p>
+            </div>
+        </div>` : ''}`;
+}
+
+function renderAllSubjectsModal(allNeis, recommendedNames) {
+    const el = document.getElementById('allSubjectsModalContent');
+    if (!allNeis || allNeis.length === 0) {
+        el.innerHTML = `<p class="text-slate-400 text-sm">나이스 API 과목 데이터가 없습니다.</p>`;
+        return;
+    }
+    const recSet = new Set((recommendedNames || []).map(n => String(n).trim()));
+    // 추천 과목 배제
+    const filtered = allNeis.filter(s => !recSet.has(String(s).trim()));
+    const recNote  = recSet.size ? ` (추천 과목 ${recSet.size}개 제외)` : '';
+    el.innerHTML = `
+        <p class="text-xs text-slate-400 mb-4">과목을 클릭하면 AI 요약을 볼 수 있습니다 — ${filtered.length}개${recNote}</p>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+            ${filtered.map(s => {
+                const safe = String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+                return `<button data-subj="${safe}" onclick="showSubjectDetail(this.dataset.subj)"
+                    class="flex items-center gap-2 p-2.5 bg-slate-50 hover:bg-blue-50 hover:border-blue-200 rounded-lg border border-slate-100 transition-colors text-left w-full group">
+                    <i class="fas fa-book text-blue-400 text-xs flex-shrink-0"></i>
+                    <span class="text-sm text-slate-700 group-hover:text-blue-700 flex-1">${String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')}</span>
+                    <i class="fas fa-chevron-right text-slate-300 text-[10px] group-hover:text-blue-400"></i>
+                </button>`;
+            }).join('')}
+        </div>`;
+}
+
+function showSubjectGrid() {
+    document.getElementById('allSubjectsModalContent').classList.remove('hidden');
+    document.getElementById('subjectDetailPanel').classList.add('hidden');
+    document.getElementById('subjectDetailBack').classList.add('hidden');
+    document.getElementById('subjectModalTitle').textContent = '나이스 API 전체 개설과목';
+    document.getElementById('subjectModalIcon').className = 'fas fa-list text-blue-600';
+}
+
+async function showSubjectDetail(name) {
+    const interest = document.getElementById('interestInput').value.trim();
+    const grade    = document.getElementById('gradeSelect').value;
+
+    document.getElementById('allSubjectsModalContent').classList.add('hidden');
+    const panel = document.getElementById('subjectDetailPanel');
+    panel.classList.remove('hidden');
+    document.getElementById('subjectDetailBack').classList.remove('hidden');
+    document.getElementById('subjectModalTitle').textContent = name;
+    document.getElementById('subjectModalIcon').className = 'fas fa-book-open text-blue-600';
+
+    panel.innerHTML = `
+        <div class="flex flex-col items-center justify-center py-10 gap-3">
+            <i class="fas fa-spinner animate-spin text-blue-500 text-2xl"></i>
+            <p class="text-slate-500 text-sm">AI가 <strong>${name}</strong> 과목을 분석 중입니다...</p>
+        </div>`;
+
+    try {
+        const resp = await fetch('/api/subject_detail', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ subject_name: name, interest: interest || '미설정', grade }),
+        });
+        if (!resp.ok) throw new Error(`서버 오류 ${resp.status}`);
+        const d = await resp.json();
+
+        const conceptsHtml = (d.key_concepts || []).length
+            ? `<div class="flex flex-wrap gap-2 mt-2">
+                ${d.key_concepts.map(c => `<span class="text-xs bg-white px-2 py-1 rounded border border-emerald-200 text-emerald-700">${c}</span>`).join('')}
+               </div>` : '';
+
+        panel.innerHTML = `
+            <div class="space-y-4">
+                ${d.overview ? `
+                <div class="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                    <p class="text-xs font-bold text-blue-700 mb-1.5"><i class="fas fa-info-circle mr-1"></i>과목 개요</p>
+                    <p class="text-sm text-slate-700 leading-relaxed">${d.overview}</p>
+                </div>` : ''}
+                ${d.career_link ? `
+                <div class="bg-purple-50 rounded-xl p-4 border border-purple-100">
+                    <p class="text-xs font-bold text-purple-700 mb-1.5"><i class="fas fa-link mr-1"></i>진로 연계 (${interest || '—'})</p>
+                    <p class="text-sm text-slate-700 leading-relaxed">${d.career_link}</p>
+                </div>` : ''}
+                ${conceptsHtml ? `
+                <div class="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
+                    <p class="text-xs font-bold text-emerald-700 mb-1.5"><i class="fas fa-key mr-1"></i>핵심 개념</p>
+                    ${conceptsHtml}
+                </div>` : ''}
+                ${d.study_tip ? `
+                <div class="bg-amber-50 rounded-xl p-4 border border-amber-100">
+                    <p class="text-xs font-bold text-amber-700 mb-1.5"><i class="fas fa-lightbulb mr-1"></i>학습 팁 / 세특 아이디어</p>
+                    <p class="text-sm text-slate-700 leading-relaxed">${d.study_tip}</p>
+                </div>` : ''}
+            </div>`;
+    } catch(e) {
+        panel.innerHTML = `<p class="text-red-500 text-sm p-4"><i class="fas fa-exclamation-triangle mr-1"></i>AI 분석 실패: ${e.message}</p>`;
+    }
+}
+
+// ─── MOCK: 서버 없이 예시 데이터를 반환 ───────────────────────
+const MOCK_RECOMMEND = {
+    school_used: "전주솔내고등학교",
+    api_errors: {},
+    subjects: [
+        {
+            name: "물리학",
+            category: "과학",
+            reason: "에너지공학의 핵심은 에너지의 기본 원리를 이해하는 것입니다. 물리학은 에너지 보존 법칙, 열역학, 전자기학 등 에너지 시스템을 분석하는 데 필수적인 기초 지식을 제공합니다. 이를 통해 에너지 변환 과정의 효율성과 시스템 설계를 위한 물리적 기반을 다질 수 있습니다.",
+            books: [
+                { title: "Fundamentals of physics", author: "Jearl Walker", pub_year: "c200", isbn: "047004618X 9780470046180", link: "https://www.nl.go.kr/NL/contents/search.do?pageNum=1&pageSize=10&srchTarget=total&kwd=9780470046180", guide: "이 책을 읽고 물리학의 핵심 개념을 에너지공학과 진로와 연결하는 탐구 보고서를 작성해 보세요." },
+                { title: "Concepts of thermodynamics", author: "Edward Frederic Obert", pub_year: "1960", isbn: "", link: "https://www.nl.go.kr/NL/contents/search.do?pageNum=1&pageSize=10&srchTarget=total&kwd=Concepts+of+thermodynamics+Obert", guide: "이 책을 읽고 물리학의 핵심 개념을 에너지공학과 진로와 연결하는 탐구 보고서를 작성해 보세요." }
+            ]
+        },
+        {
+            name: "화학",
+            category: "과학",
+            reason: "에너지공학은 연료의 화학적 특성, 배터리(배터리)의 반응 메커니스는 화학 반응의 본질을 다룹니다. 화학 과목은 에너지 저장 및 변환 시스템의 근본적인 화학 반응 메커니스는 물론, 신소재 및 에너지 저장 매체(예: 배터리 전해질)의 특성을 이해하는 데 결정적인 역할을 합니다.",
+            books: [
+                { title: "Chemistry : the central science", author: "Brown, LeMay 외", pub_year: "c199", isbn: "0131262025", link: "https://www.nl.go.kr/NL/contents/search.do?pageNum=1&pageSize=10&srchTarget=total&kwd=0131262025", guide: "이 책을 읽고 화학의 핵심 개념을 에너지공학과 진로와 연결하는 탐구 보고서를 작성해 보세요." },
+                { title: "Physical chemistry", author: "Keith J. Laidler", pub_year: "c200", isbn: "0618123415", link: "https://www.nl.go.kr/NL/contents/search.do?pageNum=1&pageSize=10&srchTarget=total&kwd=0618123415", guide: "이 책을 읽고 화학의 핵심 개념을 에너지공학과 진로와 연결하는 탐구 보고서를 작성해 보세요." }
+            ]
+        },
+        {
+            name: "지구과학",
+            category: "과학",
+            reason: "에너지공학은 재생 에너지(태양광, 풍력)의 자원 예측과 지구 시스템과의 상호작용을 고려해야 합니다. 지구과학은 기후 변화와 에너지 자원의 분포, 그리고 재생 에너지원의 잠재력을 과학적으로 평가하는 데 필요한 공간적, 시간적 관점을 제공합니다.",
+            books: [
+                { title: "B is for blue planet : an earth science alphabet", author: "written by Ruth Strother", pub_year: "c201", isbn: "9781585364541", link: "https://www.nl.go.kr/NL/contents/search.do?pageNum=1&pageSize=10&srchTarget=total&kwd=9781585364541", guide: "이 책을 읽고 지구과학의 핵심 개념을 에너지공학과 진로와 연결하는 탐구 보고서를 작성해 보세요." },
+                { title: "Artificial intelligence in energy and renewable energy systems", author: "Soteris Kalogirou", pub_year: "c200", isbn: "9781600212611", link: "https://www.nl.go.kr/NL/contents/search.do?pageNum=1&pageSize=10&srchTarget=total&kwd=9781600212611", guide: "이 책을 읽고 지구과학의 핵심 개념을 에너지공학과 진로와 연결하는 탐구 보고서를 작성해 보세요." }
+            ]
+        },
+        {
+            name: "확률과 통계",
+            category: "수학",
+            reason: "에너지공학은 불확실성이 높은 에너지 시스템의 예측과 최적화에 수학적 모델링이 필수적입니다. 확률과 통계는 에너지 생산량의 변동성 분석, 시스템의 신뢰도 평가, 그리고 최적의 운영 전략을 수립하는 데 핵심적인 도구입니다.",
+            books: [
+                { title: "(A)first course in probability", author: "Sheldon Ross", pub_year: "c200", isbn: "0130338516", link: "https://www.nl.go.kr/NL/contents/search.do?pageNum=1&pageSize=10&srchTarget=total&kwd=0130338516", guide: "이 책을 읽고 확률과 통계의 핵심 개념을 에너지공학과 진로와 연결하는 탐구 보고서를 작성해 보세요." },
+                { title: "PEEC 기법과 주파수 특성을 고려한 TSV 기반 3차원 IC 적층에서의 신호전달(SI) 및 파워전달 무결성(PI)에 대한 연구", author: "광운대학교 주관연구기관 김영민 주관연구책임자", pub_year: "2017", isbn: "", link: "https://www.nl.go.kr/NL/contents/search.do?pageNum=1&pageSize=10&srchTarget=total&kwd=PEEC+TSV+%EC%8B%A0%ED%98%B8%EC%A0%84%EB%8B%AC+%ED%8C%8C%EC%9B%8C%EC%A0%84%EB%8B%AC+%EB%AC%B4%EA%B2%B0%EC%84%B1", guide: "이 책을 읽고 확률과 통계의 핵심 개념을 에너지공학과 진로와 연결하는 탐구 보고서를 작성해 보세요." }
+            ]
+        },
+        {
+            name: "대수",
+            category: "수학",
+            reason: "에너지공학의 핵심 방정식(회로 이론, 시스템 모델링)은 대수학적 사고방식을 요구합니다. 대수는 에너지 흐름을 나타내는 방정식들을 해석하고, 복잡한 에너지 시스템의 관계식을 세우는 데 있어 가장 기본적인 연산 능력을 제공합니다.",
+            books: [
+                { title: "Algebra and trigonometry", author: "Dennis G. Zill", pub_year: "c199", isbn: "0075570955", link: "https://www.nl.go.kr/NL/contents/search.do?pageNum=1&pageSize=10&srchTarget=total&kwd=0075570955", guide: "이 책을 읽고 대수의 핵심 개념을 에너지공학과 진로와 연결하는 탐구 보고서를 작성해 보세요." },
+                { title: "Introduction to functional equations : theory and problem-solving strategies for mathematical competitions and beyond", author: "Costas Efthimiou", pub_year: "c201", isbn: "9780821853146 0821853147", link: "https://www.nl.go.kr/NL/contents/search.do?pageNum=1&pageSize=10&srchTarget=total&kwd=9780821853146", guide: "이 책을 읽고 대수의 핵심 개념을 에너지공학과 진로와 연결하는 탐구 보고서를 작성해 보세요." }
+            ]
+        }
+    ],
+    universities: [
+        {
+            name: "서울대학교",
+            department: "에너지공학과 (또는 관련 학과)",
+            focus: "기초 과학 역량 및 융합적 사고",
+            reason: "서울대는 기초 과학 분야에서 가장 탄탄한 기반을 제공하며, 에너지 시스템의 근본 원리를 깊이 있게 탐구할 수 있어 에너지공학의 기초를 다지기에 최적입니다.",
+            admission_subjects: ["물리학Ⅰ/Ⅱ", "미적분Ⅰ/Ⅱ", "화학Ⅰ/Ⅱ", "정보(기초)", "물리(심화)"],
+            career_paths: ["에너지 연구원/전문가", "에너지 기업(석유화학/신재생 에너지), 에너지 정책 분석가", "에너지 스타트업 창업"]
+        },
+        {
+            name: "서울과학기술대학교",
+            department: "에너지공학과 (또는 에너지시스템공학과)",
+            focus: "실무 중심의 공학적 문제 해결 능력",
+            reason: "서울과기대는 공학 분야에 특화된 교육 시스템을 통해 에너지 설비 및 시스템 설계 등 실무에 즉시 적용 가능한 기술 역량을 집중적으로 배양할 수 있습니다.",
+            admission_subjects: ["물리학Ⅰ/Ⅱ", "미적분Ⅰ/Ⅱ", "기계/전자 기초", "정보(프로그래밍 기초)", "화학Ⅰ/Ⅱ"],
+            career_paths: ["에너지 플랜트 설계/운영 엔지니어", "신재생 에너지 시스템 개발자", "에너지 효율 컨설턴트", "에너지 IT 융합 전문가"]
+        },
+        {
+            name: "성균관대학교",
+            department: "에너지공학과 (또는 에너지공학부)",
+            focus: "첨단 에너지 기술 및 융합 연구",
+            reason: "성균관대는 첨단 에너지 기술 분야의 연구 중심 대학으로, 산학연 협력을 통한 실용적인 연구 경험과 글로벌 네트워크를 갖출 수 있습니다.",
+            admission_subjects: ["물리학Ⅰ/Ⅱ", "화학Ⅰ/Ⅱ", "미적분Ⅰ/Ⅱ", "정보(기초)"],
+            career_paths: ["에너지 소재 연구원", "스마트 그리드 전문가", "에너지 정책 컨설턴트"]
+        }
+    ],
+    keywords: [
+        { tag: "#에너지_시스템_설계", category: "세특", context: "에너지 시스템 관련 세특" },
+        { tag: "#열역학_제2법칙_응용", category: "세특", context: "물리/화학 세특" },
+        { tag: "#재생에너지_경제성_분석", category: "세특", context: "경제성 분석 세특" },
+        { tag: "#탄소중립_기술_로드맵", category: "세특", context: "지구과학 세특" },
+        { tag: "#에너지_데이터_시각화", category: "세특", context: "정보/수학 세특" },
+        { tag: "#에너지공학_진로_탐구", category: "자소서", context: "자기소개서 핵심 소재" },
+        { tag: "#경제성_분석_역량", category: "자소서", context: "수치 분석 능력 어필" },
+        { tag: "#에너지_전환_문제의식", category: "자소서", context: "사회적 관심 표현" },
+        { tag: "#에너지공학_연구부", category: "동아리", context: "관련 동아리 활동" },
+        { tag: "#환경_데이터_분석_팀", category: "동아리", context: "데이터 분석 동아리" },
+        { tag: "#태양광_발전_효율_탐구", category: "독서", context: "독서 후 탐구 활동" },
+        { tag: "#재생에너지_정책_리포트", category: "독서", context: "독서 연계 보고서" },
+        { tag: "#에너지_공학자", category: "진로", context: "목표 직업" },
+        { tag: "#경제성", category: "진로", context: "핵심 가치 키워드" },
+        { tag: "#지속가능_에너지_전문가", category: "진로", context: "장기 진로 목표" }
+    ],
+    study_guide: {
+        roadmap: "1학년: 물리학Ⅰ, 화학Ⅰ, 수학Ⅰ·Ⅱ 기초 확립\n2학년: 물리학Ⅱ, 화학Ⅱ, 지구과학Ⅰ, 확률과 통계, 미적분 심화\n3학년: 대수, 물리(심화), 에너지 관련 선택과목, 수능 대비",
+        activities: [
+            "에너지 절감 캠페인 기획 및 실행 (학교 에너지 사용량 데이터 분석 포함)",
+            "태양광 패널 소규모 설치 및 발전량 측정 실험 보고서 작성",
+            "에너지공학과 선배 멘토링 및 현직자 인터뷰 및 진로 로드맵 구체화"
+        ],
+        tips: "💡 **핵심 전략:** 단순히 '에너지 기술'에만 집중하지 말고, '에너지 기술의 경제성'을 분석하는 융합적 관점을 일관되게 보여주어야 합니다. 💡 **세특/자소서 연결:** 세특에서 보여준 '수치적 분석 능력'을 자소서에서 '경제적 의사결정 능력'으로 연결하는 스토리라인을 구축하세요. 💡 **키워드 활용:** '경제성', '경제성' 키워드를 모든 활동의 중심축으로 설정하고 일관성을 유지하는 것이 합격의 열쇠입니다."
+    },
+    all_neis_subjects: ["미적분", "기하", "영어독해와작문", "심화영어", "고전읽기", "독서와작문", "사회문제탐구", "윤리와사상", "경제", "세계사", "과학사", "융합과학", "생명과학Ⅱ", "정보과학", "프로그래밍"]
+};
+
+const MOCK_SUBJECT_DETAIL = {
+    overview: "해당 과목은 에너지공학 진로를 위한 핵심 기초 과목입니다.",
+    career_link: "에너지공학과 직접적으로 연계되는 개념과 원리를 학습할 수 있습니다.",
+    key_concepts: ["에너지 변환", "시스템 분석", "수치적 모델링", "실험 설계"],
+    study_tip: "세특 작성 시 단순 개념 학습을 넘어 에너지공학 진로와 구체적으로 연결하는 탐구 활동 기록을 남기세요."
+};
+
+// fetch override
+const _originalFetch = window.fetch;
+window.fetch = async function(url, options) {
+    if (typeof url === 'string' && url.includes('/api/recommend')) {
+        await new Promise(r => setTimeout(r, 6800)); // 로딩 애니메이션 감상
+        return new Response(JSON.stringify(MOCK_RECOMMEND), {
+            status: 200, headers: { 'Content-Type': 'application/json' }
+        });
+    }
+    if (typeof url === 'string' && url.includes('/api/subject_detail')) {
+        await new Promise(r => setTimeout(r, 1200));
+        return new Response(JSON.stringify(MOCK_SUBJECT_DETAIL), {
+            status: 200, headers: { 'Content-Type': 'application/json' }
+        });
+    }
+    return _originalFetch.apply(this, arguments);
+};
+
+// ─── 메인 생성 함수 ───────────────────────────────────────────
+document.getElementById('roadmapForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    generateRoadmap();
+});
+
+async function generateRoadmap() {
+    const interest    = document.getElementById('interestInput').value.trim();
+    const grade       = document.getElementById('gradeSelect').value;
+    const keywords    = document.getElementById('keywordsInput')?.value || '';
+    const school_name = document.getElementById('schoolInput')?.value.trim() || '';
+    const placeholder = document.getElementById('placeholderState');
+    const loading     = document.getElementById('loadingState');
+    const result      = document.getElementById('resultState');
+    const loadingText = document.getElementById('loadingText');
+    const reasoningBar = document.getElementById('reasoningBar');
+
+    placeholder.classList.add('hidden');
+    result.classList.add('hidden');
+    loading.classList.remove('hidden');
+    reasoningBar.style.width = '0%';
+
+    document.getElementById('statusNeis').innerHTML    = '<span class="text-slate-400">조회 중...</span>';
+    document.getElementById('statusAcademy').innerHTML = '<span class="text-slate-400">조회 중...</span>';
+
+    const schoolLabel = school_name ? `"${school_name}"` : '관련 고등학교';
+    const steps = [
+        { text: `나이스 API — ${schoolLabel} 조회 중...`,    width: '18%' },
+        { text: `나이스 API — 실제 개설과목 수집 중...`,      width: '38%' },
+        { text: `대학알리미 API — 관련 학과 수집 중...`,      width: '56%' },
+        { text: `Radix KV 캐시 확인 중...`,                   width: '72%' },
+        { text: `LLM 추론 중 (과목·대학·키워드·로드맵)...`,  width: '90%' },
+    ];
+    let stepIdx = 0;
+    const anim = setInterval(() => {
+        if (stepIdx < steps.length) {
+            loadingText.innerText    = steps[stepIdx].text;
+            reasoningBar.style.width = steps[stepIdx].width;
+            stepIdx++;
+        }
+    }, 1400);
+
+    try {
+        const resp = await fetch('/api/recommend', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ interest, grade, keywords, school_name }),
+        });
+        if (!resp.ok) throw new Error(`서버 오류 ${resp.status}`);
+        const data = await resp.json();
+
+        clearInterval(anim);
+        reasoningBar.style.width = '100%';
+        loadingText.innerText    = '로드맵 구성 완료!';
+
+        renderApiStatus(data.api_errors);
+
+        // 학교 배지
+        const schoolBadge = document.getElementById('schoolBadge');
+        if (data.school_used) {
+            schoolBadge.innerHTML = `<i class="fas fa-school mr-1"></i> 나이스 API 기반: <strong>${data.school_used}</strong> 실제 개설과목`;
+        } else if (data.api_errors?.neis) {
+            schoolBadge.innerHTML = `<span class="text-red-500"><i class="fas fa-exclamation-triangle mr-1"></i>나이스 API 오류: ${data.api_errors.neis}</span>`;
+        }
+
+        renderSubjects(data.subjects || []);
+        renderUniversities(data.universities || [], data.api_errors?.academy || '');
+        renderKeywords(data.keywords || []);
+        renderStudyGuide(data.study_guide || {});
+        renderAllSubjectsModal(
+            data.all_neis_subjects || [],
+            (data.subjects || []).map(s => s.name)
+        );
+
+        setTimeout(() => {
+            loading.classList.add('hidden');
+            result.classList.remove('hidden');
+            window.saveUserRecord('career_recommendation', {
+                interest, school_name, recommended_at: new Date().toISOString()
+            });
+        }, 400);
+
+    } catch (err) {
+        clearInterval(anim);
+        loading.classList.add('hidden');
+        placeholder.classList.remove('hidden');
+        alert(`오류: ${err.message}\napi.py 서버가 실행 중인지 확인하세요.`);
+    }
+}
+</script>
+</body>
+</html>
